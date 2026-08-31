@@ -1,43 +1,53 @@
-from typing import List, Optional, Dict
-from app.schemas.todo import TodoRead, TodoCreate, TodoUpdate
+from sqlalchemy import Column, Integer, String, Boolean
+from app.db import Base
+from app.schemas.todo import TodoCreate, TodoUpdate
 
-class TodoDB:
-    def __init__(self):
-        self._db: Dict[int, TodoRead] = {}
-        self._id_counter = 1
+class Todo(Base):
+    __tablename__ = "todos"
 
-    def get_all(self, completed: Optional[bool] = None) -> List[TodoRead]:
-        if completed is None:
-            return list(self._db.values())
-        return [todo for todo in self._db.values() if todo.completed == completed]
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    completed = Column(Boolean, default=False)
 
-    def get_by_id(self, todo_id: int) -> Optional[TodoRead]:
-        return self._db.get(todo_id)
+def get_todos(db, completed=None):
+    from sqlalchemy.orm import Session
+    query = db.query(Todo)
+    if completed is not None:
+        query = query.filter(Todo.completed == completed)
+    return query.all()
 
-    def create(self, todo_data: TodoCreate) -> TodoRead:
-        todo_id = self._id_counter
-        new_todo = TodoRead(id=todo_id, **todo_data.model_dump())
-        self._db[todo_id] = new_todo
-        self._id_counter += 1
-        return new_todo
+def get_todo_by_id(db, todo_id: int):
+    from sqlalchemy.orm import Session
+    return db.query(Todo).filter(Todo.id == todo_id).first()
 
-    def update(self, todo_id: int, todo_data: TodoUpdate) -> Optional[TodoRead]:
-        if todo_id not in self._db:
-            return None
+def create_todo(db, todo_data: TodoCreate):
+    from sqlalchemy.orm import Session
+    db_todo = Todo(**todo_data.model_dump())
+    db.add(db_todo)
+    db.commit()
+    db.refresh(db_todo)
+    return db_todo
 
-        current_todo = self._db[todo_id]
-        update_data = todo_data.model_dump(exclude_unset=True)
+def update_todo(db, todo_id: int, todo_data: TodoUpdate):
+    from sqlalchemy.orm import Session
+    db_todo = db.query(Todo).filter(Todo.id == todo_id).first()
+    if not db_todo:
+        return None
 
-        # Create a new TodoRead with updated fields
-        updated_todo = current_todo.model_copy(update=update_data)
-        self._db[todo_id] = updated_todo
-        return updated_todo
+    update_dict = todo_data.model_dump(exclude_unset=True)
+    for key, value in update_dict.items():
+        setattr(db_todo, key, value)
 
-    def delete(self, todo_id: int) -> bool:
-        if todo_id in self._db:
-            del self._db[todo_id]
-            return True
+    db.commit()
+    db.refresh(db_todo)
+    return db_todo
+
+def delete_todo(db, todo_id: int):
+    from sqlalchemy.orm import Session
+    db_todo = db.query(Todo).filter(Todo.id == todo_id).first()
+    if not db_todo:
         return False
-
-# Singleton instance for the in-memory database
-todo_db = TodoDB()
+    db.delete(db_todo)
+    db.commit()
+    return True

@@ -1,5 +1,9 @@
 from fastapi import FastAPI
 from app.api.endpoints import todos
+from app.db import Base, engine
+
+# Create database tables
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Todo List API",
